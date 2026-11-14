@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Job 1: build -> test (chạy cho cả push và Pull Request)
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore EduHub.sln
+      - run: dotnet build EduHub.sln --no-restore -c Release
+      - run: >-
+          dotnet test EduHub.sln --no-build -c Release
+          --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: '**/coverage.cobertura.xml'
+
+  # Job 2: đóng gói và đẩy image lên GitHub Container Registry (chỉ khi test đạt, chỉ trên main)
+  push-image:
+    needs: build-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: EduHub.API/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/eduhub-api:latest
+            ghcr.io/${{ github.repository_owner }}/eduhub-api:${{ github.sha }}
