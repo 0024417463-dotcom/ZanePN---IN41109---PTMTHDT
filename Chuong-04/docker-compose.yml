@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eduhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eduhub"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: EduHub.API/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Connection string lấy từ biến môi trường, không hardcode trong appsettings khi chạy Docker
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=eduhub;Username=postgres;Password=${DB_PASSWORD:-secret}
+      Database__AutoMigrate: "true"
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  postgres_data:
